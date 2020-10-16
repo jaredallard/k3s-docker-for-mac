@@ -39,3 +39,6 @@ volumeIDs=$(docker volume ls --quiet --filter "driver=local")
 if test -n "$volumeIDs"; then
   echo "$volumeIDs" | xargs --max-args 1 docker volume rm >/dev/null
 fi
+
+echo " -> Removing Docker Network"
+docker network rm k3s-dfm

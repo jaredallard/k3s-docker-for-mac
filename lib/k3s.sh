@@ -37,19 +37,14 @@ remove_proxies() {
 }
 
 create_proxies() {
-  IP_ADDRESS="$(docker inspect k3s | jq '.[0].NetworkSettings.IPAddress' -r)"
-  if [[ -z $IP_ADDRESS ]]; then
-    warn "failed to get ip address of k3s container, will fail to talk to kubernetes"
-  fi
-
   # Ensure that we always have no proxies running
   remove_proxies
 
   ## Loadbalancers
   for proxy in "${proxies[@]}"; do
-    docker run -d --restart=unless-stopped \
+    docker run --network k3s-dfm -d --restart=unless-stopped \
       -v /var/run/docker.sock:/var/run/docker.sock --name "proxy-$proxy" \
-      -p "$proxy:$proxy" hpello/tcp-proxy "$IP_ADDRESS" "$proxy" >/dev/null
+      -p "$proxy:$proxy" hpello/tcp-proxy "172.28.1.2" "$proxy" >/dev/null
   done
 }
 
@@ -67,8 +62,18 @@ init_k3s() {
 
   info "creating k3s cluster"
 
+  # create a network for the k3s container to prevent restarting
+  # it from potentially giving it a new IP thus rendering the cluster unbootable.
+  # TODO(jaredallard): maybe dynamically allocate this?
+  docker network create \
+    --driver=bridge \
+    --subnet=172.28.0.0/16 \
+    --ip-range=172.28.1.0/24 \
+    --gateway=172.28.1.1 \
+    k3s-dfm
+
   # Create the container to run k3s in.
-  docker run --privileged --pid=host --restart=unless-stopped \
+  docker run --privileged --pid=host --network k3s-dfm --ip 172.28.1.2 --restart=unless-stopped \
     --name k3s --detach alpine \
     sh -c 'nsenter --target $(pgrep dockerd) --mount --uts --ipc --pid sh /var/lib/k3s-dfm/start.sh' >/dev/null
 
